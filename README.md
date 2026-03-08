@@ -1,47 +1,90 @@
 # Twitter → Binance Square Auto Sync
 
-Automatically sync your tweets to Binance Square. Handles long tweets (note_tweet) without truncation.
+Automatically sync your tweets to Binance Square. Handles long tweets without truncation.
 
 ## Features
 
-- **Long tweet support** — Fetches full text via Twitter GraphQL API, no more truncated posts
-- **Smart filtering** — Skips retweets, replies, and media-only tweets
+- **Long tweet support** — Full text preserved, no truncation
+- **Dual Twitter backend** — Supports [6551.io](https://6551.io) (recommended) and [xapi.to](https://xapi.to)
+- **Smart filtering** — Skips retweets, replies, and empty tweets
 - **Deduplication** — SQLite-backed, never posts the same tweet twice
 - **Rate limiting** — Built-in rate limiter for Twitter API calls
 - **Daily limit** — Configurable daily post cap (default: 12)
-- **Scheduled sync** — LaunchAgent (macOS) or cron (Linux), posts 1 tweet per run
+- **Scheduled sync** — LaunchAgent (macOS) or cron (Linux)
+
+## Twitter Data Sources
+
+| Feature | 6551.io (recommended) | xapi.to |
+|---------|----------------------|---------|
+| Long tweets | Native full text | Requires extra GraphQL call |
+| Media URLs | Included in response | Requires extra GraphQL call |
+| Query by | Username | User ID |
+| Speed | ~0.3s per sync | ~5s per sync |
+| Setup | Token from [6551.io/mcp](https://6551.io/mcp) | API key from [xapi.to](https://xapi.to) |
 
 ## Prerequisites
 
-1. **xapi.to account** — Sign up at [xapi.to](https://xapi.to) and get an API key
-2. **Binance Square Open API key** — Get it from [Binance Square settings](https://www.binance.com/en/square) → Open API
+1. **Twitter API token** — Choose one:
+   - **6551.io** (recommended): Sign up at [6551.io/mcp](https://6551.io/mcp)
+   - **xapi.to**: Sign up at [xapi.to](https://xapi.to)
+2. **Binance Square Open API key** — Get it from [Binance Square](https://www.binance.com/en/square) → Settings → Open API
 3. **Python 3.8+**
-4. **curl** (for GraphQL tweet detail fetching)
 
 ## Setup
 
 ```bash
-git clone https://github.com/hertzbot-v/twitter-to-binance-square.git
+git clone https://github.com/HertzCOMM/twitter-to-binance-square.git
 cd twitter-to-binance-square
 
 # Configure
 cp config.example.json config.json
-# Edit config.json with your API keys and Twitter user ID
+# Edit config.json with your API keys
 ```
 
-### Find your Twitter user ID
+### Configuration
 
-If you don't know your Twitter user ID, you can find it at [tweeterid.com](https://tweeterid.com) or run:
+Edit `config.json`:
 
-```bash
-python3 -c "
-import xapi_client as xapi
-import json
-cfg = json.load(open('config.json'))
-uid = xapi.execute(cfg['twitter']['xapi_key'], 'twitter.user_by_screen_name', {'screen_name': 'YOUR_HANDLE'})
-print('User ID:', uid.get('rest_id'))
-"
+```json
+{
+  "twitter": {
+    "provider": "6551",
+    "6551_token": "your-6551-token",
+    "username": "your_twitter_handle",
+    "xapi_key": "",
+    "user_id": ""
+  },
+  "binance_square": {
+    "api_key": "your-binance-square-openapi-key"
+  },
+  "sync": {
+    "fetch_count": 20,
+    "daily_post_limit": 12,
+    "posts_per_run": 1,
+    "max_text_length": 900
+  }
+}
 ```
+
+**Using 6551.io (recommended):**
+- Set `provider` to `"6551"`
+- Fill in `6551_token` and `username`
+
+**Using xapi.to:**
+- Set `provider` to `"xapi"`
+- Fill in `xapi_key` and `user_id` (numeric Twitter user ID)
+
+| Field | Description |
+|-------|-------------|
+| `provider` | `"6551"` or `"xapi"` |
+| `6551_token` | Your 6551.io API token |
+| `username` | Your Twitter handle (without @) |
+| `xapi_key` | Your xapi.to API key (if using xapi) |
+| `user_id` | Your Twitter numeric user ID (if using xapi) |
+| `fetch_count` | Tweets to fetch per run (default: 20) |
+| `daily_post_limit` | Max posts per day (default: 12) |
+| `posts_per_run` | Posts per sync run (default: 1) |
+| `max_text_length` | Max text length before truncation (default: 900) |
 
 ## Usage
 
@@ -55,7 +98,7 @@ python3 sync.py
 # Check sync status
 python3 sync.py --status
 
-# Reset cursor (re-fetch all tweets, skips already-posted ones)
+# Reset (re-fetch all tweets, skips already-posted ones)
 python3 sync.py --reset
 ```
 
@@ -72,29 +115,9 @@ chmod +x setup_schedule.sh
 
 ```bash
 crontab -e
-# Add this line (adjust path):
+# Add:
 0 */2 * * * cd /path/to/twitter-to-binance-square && python3 sync.py >> ~/.twitter-bsq-sync/sync.log 2>&1
 ```
-
-## Configuration
-
-Edit `config.json`:
-
-| Field | Description |
-|-------|-------------|
-| `twitter.xapi_key` | Your xapi.to API key |
-| `twitter.user_id` | Your Twitter numeric user ID |
-| `binance_square.api_key` | Your Binance Square Open API key |
-| `sync.fetch_count` | Tweets to fetch per run (default: 20) |
-| `sync.daily_post_limit` | Max posts per day (default: 12) |
-| `sync.posts_per_run` | Posts per run (default: 1) |
-| `sync.max_text_length` | Max text length before truncation (default: 900) |
-
-## Limitations
-
-- **Text only** — Binance Square Open API does not support image uploads. Tweet images are not synced.
-- **No delete API** — Cannot programmatically delete posts from Binance Square.
-- **Rate limits** — xapi.to free tier has usage limits. For high-volume accounts, consider upgrading.
 
 ## How it works
 
@@ -102,13 +125,18 @@ Edit `config.json`:
 LaunchAgent / cron (every 2h)
     ↓
 sync.py
-    ├─ xapi_client.get_user_tweets()     ← fetch recent tweets
-    ├─ filter.should_sync()              ← skip retweets, replies, etc.
-    ├─ xapi_client.get_tweet_detail()    ← get full long tweet text
-    ├─ filter.prepare_text()             ← clean & truncate
-    ├─ publisher.publish()               ← post to Binance Square
-    └─ db.mark_posted()                  ← record in SQLite
+    ├─ fetch_tweets()         ← 6551.io or xapi.to
+    ├─ filter.should_sync()   ← skip retweets, replies, etc.
+    ├─ enrich_tweet()         ← full long tweet text + media
+    ├─ filter.prepare_text()  ← clean & truncate for BSQ
+    ├─ publisher.publish()    ← post to Binance Square
+    └─ db.mark_posted()      ← record in SQLite
 ```
+
+## Limitations
+
+- **Text only** — Binance Square Open API does not support image uploads
+- **No delete API** — Cannot programmatically delete BSQ posts
 
 ## License
 

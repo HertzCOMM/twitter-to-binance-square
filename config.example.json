@@ -1,8 +1,12 @@
 {
   "twitter": {
-    "xapi_key": "sk-your-xapi-key-here",
-    "user_id": "your-twitter-user-id",
-    "screen_name": "your_twitter_handle"
+    "provider": "6551",
+
+    "6551_token": "your-6551-api-token",
+    "username": "your_twitter_handle",
+
+    "xapi_key": "",
+    "user_id": ""
   },
   "binance_square": {
     "api_key": "your-binance-square-openapi-key"

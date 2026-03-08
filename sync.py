@@ -2,10 +2,10 @@
 Twitter → Binance Square Sync
 
 Syncs your tweets to Binance Square automatically.
+- Supports two Twitter data sources: 6551.io (recommended) and xapi.to
 - Handles long tweets (note_tweet) without truncation
 - Deduplicates via SQLite
-- Rate-limited Twitter API calls
-- One tweet per run (pair with cron/LaunchAgent for scheduled posting)
+- Rate-limited API calls
 
 Usage:
   python sync.py              # Sync once (post 1 oldest unposted tweet)
@@ -24,19 +24,67 @@ from pathlib import Path
 import db
 import filter as fil
 import publisher as pub
-import xapi_client as xapi
-
-# ── Config ───────────────────────────────────────────────────────────────────
 
 CONFIG_PATH = Path(__file__).parent / 'config.json'
 
 
 def load_config() -> dict:
     if not CONFIG_PATH.exists():
-        print(f'[error] config.json not found. Copy config.example.json to config.json and fill in your keys.')
+        print('[error] config.json not found. Copy config.example.json to config.json and fill in your keys.')
         sys.exit(1)
     with open(CONFIG_PATH) as f:
         return json.load(f)
+
+
+def fetch_tweets(cfg: dict) -> dict:
+    """Fetch tweets using the configured provider. Returns {'tweets': [...]}."""
+    tw_cfg = cfg['twitter']
+    provider = tw_cfg.get('provider', '6551')
+    fetch_count = cfg.get('sync', {}).get('fetch_count', 20)
+
+    if provider == '6551':
+        import twitter_6551 as t6
+        token = tw_cfg.get('6551_token', '')
+        username = tw_cfg.get('username', '')
+        if not token or not username:
+            return {'error': '6551_token and username required in config'}
+        return t6.get_user_tweets(token, username, count=fetch_count)
+    elif provider == 'xapi':
+        import xapi_client as xapi
+        api_key = tw_cfg.get('xapi_key', '')
+        user_id = tw_cfg.get('user_id', '')
+        if not api_key or not user_id:
+            return {'error': 'xapi_key and user_id required in config'}
+        return xapi.get_user_tweets(api_key, user_id, count=fetch_count)
+    else:
+        return {'error': f'unknown provider: {provider}'}
+
+
+def enrich_tweet(cfg: dict, tweet: dict) -> dict:
+    """
+    Enrich tweet with full text and media URLs if not already present.
+    6551 returns these natively; xapi needs an extra GraphQL call.
+    """
+    provider = cfg['twitter'].get('provider', '6551')
+
+    if provider == '6551':
+        # 6551 already returns full text and media
+        return {
+            'note_text': tweet.get('full_text', ''),
+            'media_urls': tweet.get('media_urls', []),
+        }
+
+    # xapi: need GraphQL call for long tweets
+    import xapi_client as xapi
+    api_key = cfg['twitter'].get('xapi_key', '')
+    tweet_id = tweet.get('id') or tweet.get('id_str', '')
+    detail = xapi.get_tweet_detail(api_key, tweet_id)
+    if 'error' not in detail:
+        return {
+            'note_text': detail.get('full_text', ''),
+            'media_urls': detail.get('media_urls', []),
+        }
+    return {'note_text': '', 'media_urls': []}
 
 
 # ── Core sync ────────────────────────────────────────────────────────────────
@@ -44,11 +92,8 @@ def load_config() -> dict:
 def sync_once(cfg: dict, dry_run: bool = False) -> dict:
     stats = {'fetched': 0, 'skipped': 0, 'already_posted': 0, 'published': 0, 'errors': 0}
 
-    xapi_key = cfg['twitter']['xapi_key']
-    user_id = cfg['twitter']['user_id']
     bsq_key = cfg['binance_square']['api_key']
     sync_cfg = cfg.get('sync', {})
-    fetch_count = sync_cfg.get('fetch_count', 20)
     daily_limit = sync_cfg.get('daily_post_limit', 12)
     posts_per_run = sync_cfg.get('posts_per_run', 1)
     max_text_len = sync_cfg.get('max_text_length', 900)
@@ -63,7 +108,7 @@ def sync_once(cfg: dict, dry_run: bool = False) -> dict:
     print(f'[sync] posted today: {today_count}, will post up to {remaining}')
 
     # Fetch tweets
-    result = xapi.get_user_tweets(xapi_key, user_id, count=fetch_count)
+    result = fetch_tweets(cfg)
     if 'error' in result:
         print(f'[sync] failed to fetch tweets: {result["error"]}')
         stats['errors'] += 1
@@ -95,13 +140,12 @@ def sync_once(cfg: dict, dry_run: bool = False) -> dict:
                 db.mark_posted(tweet_id, 'filtered')
             continue
 
-        # Fetch full text for long tweets
-        note_text = ''
-        detail = xapi.get_tweet_detail(xapi_key, tweet_id)
-        if 'error' not in detail:
-            note_text = detail.get('full_text', '')
-            if note_text:
-                print(f'    [long tweet] full text: {len(note_text)} chars')
+        # Enrich with full text / media
+        enriched = enrich_tweet(cfg, tweet)
+        note_text = enriched.get('note_text', '')
+
+        if note_text and len(note_text) > len(tweet.get('full_text', '')):
+            print(f'    [long tweet] full text: {len(note_text)} chars')
 
         text = fil.prepare_text(tweet, note_tweet_text=note_text, max_len=max_text_len)
         print(f'  post [{tweet_id}] {text[:60]}{"..." if len(text) > 60 else ""}')
@@ -124,11 +168,6 @@ def sync_once(cfg: dict, dry_run: bool = False) -> dict:
             if code in pub.AUTH_ERROR_CODES:
                 print('[sync] Binance API key invalid, please check config')
                 sys.exit(1)
-
-    # Save cursor
-    cursors = result.get('cursors', {})
-    if cursors.get('top') and not dry_run:
-        db.save_cursor(cursors['top'])
 
     return stats
 
@@ -171,6 +210,9 @@ def main():
 
     if args.dry_run:
         print('[sync] DRY-RUN mode')
+
+    provider = cfg['twitter'].get('provider', '6551')
+    print(f'[sync] twitter provider: {provider}')
 
     start = time.time()
     stats = sync_once(cfg, dry_run=args.dry_run)
