@@ -65,9 +65,16 @@ def save_cursor(cursor: str):
         )
 
 
+def total_count() -> int:
+    with _conn() as con:
+        row = con.execute('SELECT COUNT(*) FROM posted_tweets').fetchone()
+    return row[0] if row else 0
+
+
 def posted_count_today() -> int:
     with _conn() as con:
         row = con.execute(
             "SELECT COUNT(*) FROM posted_tweets WHERE posted_at >= date('now')"
+            " AND square_post_id NOT IN ('backfill', 'filtered')"
         ).fetchone()
     return row[0] if row else 0

@@ -118,6 +118,16 @@ def sync_once(cfg: dict, dry_run: bool = False) -> dict:
     stats['fetched'] = len(tweets)
     print(f'[sync] fetched {len(tweets)} tweets')
 
+    # First run: backfill all existing tweets to avoid posting old content
+    if db.total_count() == 0 and tweets and not dry_run:
+        print(f'[sync] first run detected, backfilling {len(tweets)} existing tweets')
+        for t in tweets:
+            tid = t.get('id') or t.get('id_str', '')
+            if tid:
+                db.mark_posted(tid, 'backfill')
+        print('[sync] backfill done. New tweets will be synced from the next run.')
+        return stats
+
     # Process oldest first
     published_this_run = 0
     for tweet in reversed(tweets):
