@@ -27,8 +27,6 @@ def should_sync(tweet: dict) -> tuple:
     text = _clean_text(tweet.get('full_text', ''))
     if not text:
         return False, 'empty_text'
-    if len(text) < 5:
-        return False, f'too_short({len(text)})'
     return True, ''
 
 
