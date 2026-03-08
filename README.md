@@ -9,7 +9,7 @@ Automatically sync your tweets to Binance Square. Handles long tweets without tr
 ## Features / 功能
 
 - **Long tweet support / 长推文支持** — Full text preserved, no truncation / 完整保留全文，不截断
-- **Dual Twitter backend / 双数据源** — [6551.io](https://6551.io) (recommended / 推荐) and [xapi.to](https://xapi.to)
+- **Dual Twitter backend / 双数据源** — [6551.io](https://6551.io) and [xapi.to](https://xapi.to)
 - **Smart filtering / 智能过滤** — Skips retweets, replies, and empty tweets / 跳过转推、回复、空推文
 - **Deduplication / 去重** — SQLite-backed, never posts the same tweet twice / 基于 SQLite，不会重复发帖
 - **Rate limiting / 限速** — Built-in rate limiter / 内置速率控制
@@ -18,7 +18,7 @@ Automatically sync your tweets to Binance Square. Handles long tweets without tr
 
 ## Twitter Data Sources / 推特数据源对比
 
-| Feature / 特性 | 6551.io (recommended / 推荐) | xapi.to |
+| Feature / 特性 | 6551.io | xapi.to |
 |---------|----------------------|---------|
 | Long tweets / 长推文 | Native full text / 原生全文 | Requires extra GraphQL call / 需额外 GraphQL 调用 |
 | Media URLs / 媒体链接 | Included in response / 响应中直接包含 | Requires extra GraphQL call / 需额外调用 |
@@ -29,7 +29,7 @@ Automatically sync your tweets to Binance Square. Handles long tweets without tr
 ## Prerequisites / 前置条件
 
 1. **Twitter API token / 推特 API 令牌** — Choose one / 二选一:
-   - **6551.io** (recommended / 推荐): Sign up at / 注册 [6551.io/mcp](https://6551.io/mcp)
+   - **6551.io**: Sign up at / 注册 [6551.io/mcp](https://6551.io/mcp)
    - **xapi.to**: Sign up at / 注册 [xapi.to](https://xapi.to)
 2. **Binance Square Open API key / 币安广场 API 密钥** — Get it from / 获取方式: [Binance Square](https://www.binance.com/en/square) → Settings / 设置 → Open API
 3. **Python 3.8+**
@@ -70,7 +70,7 @@ Edit / 编辑 `config.json`:
 }
 ```
 
-**Using 6551.io (recommended / 推荐):**
+**Using 6551.io:**
 - Set `provider` to `"6551"` / 设置 `provider` 为 `"6551"`
 - Fill in `6551_token` and `username` / 填入 `6551_token` 和 `username`
 
