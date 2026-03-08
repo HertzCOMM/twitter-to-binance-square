@@ -1,0 +1,16 @@
+{
+  "twitter": {
+    "xapi_key": "sk-your-xapi-key-here",
+    "user_id": "your-twitter-user-id",
+    "screen_name": "your_twitter_handle"
+  },
+  "binance_square": {
+    "api_key": "your-binance-square-openapi-key"
+  },
+  "sync": {
+    "fetch_count": 20,
+    "daily_post_limit": 12,
+    "posts_per_run": 1,
+    "max_text_length": 900
+  }
+}
